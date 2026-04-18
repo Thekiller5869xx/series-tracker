@@ -216,6 +216,114 @@ const App = {
         container.innerHTML = html;
     },
 
+    // ===== AUTOFILL FROM API =====
+    async autoFill() {
+        const titleInput = document.getElementById('input-title');
+        const type = document.getElementById('input-type').value;
+        const title = titleInput.value.trim();
+        
+        if (!title) {
+            UI.showToast('⚠️ Entrez un titre d\\'abord');
+            return;
+        }
+
+        UI.showToast('🔍 Recherche en cours...');
+
+        try {
+            if (type === 'series') {
+                // TVMaze API
+                const res = await fetch(`https://api.tvmaze.com/search/shows?q=${encodeURIComponent(title)}`);
+                const data = await res.json();
+                if (!data || data.length === 0) {
+                    UI.showToast('❌ Série introuvable');
+                    return;
+                }
+                const best = data[0].show;
+                
+                // Fetch full info for episodes/seasons
+                const epRes = await fetch(`https://api.tvmaze.com/shows/${best.id}?embed=episodes`);
+                const epData = await epRes.json();
+                
+                document.getElementById('input-title').value = best.name;
+                if (best.image && best.image.original) {
+                    document.getElementById('input-poster').value = best.image.original;
+                }
+                if (best.genres && best.genres.length > 0) {
+                    const genreMap = { 'Action': 'Action', 'Adventure': 'Aventure', 'Anime': 'Animation', 'Comedy': 'Comédie', 'Crime': 'Crime', 'Documentary': 'Documentaire', 'Drama': 'Drame', 'Fantasy': 'Fantastique', 'Horror': 'Horreur', 'Romance': 'Romance', 'Science-Fiction': 'Sci-Fi', 'Thriller': 'Thriller' };
+                    // Default to first genre if mapping exists
+                    const translated = genreMap[best.genres[0]];
+                    if (translated) {
+                        document.getElementById('input-genre').value = translated;
+                    }
+                }
+                if (best.premiered) {
+                    document.getElementById('input-year').value = best.premiered.substring(0, 4);
+                }
+                if (best.summary) {
+                    let text = best.summary.replace(/<[^>]*>?/gm, ''); // remove html tags
+                    document.getElementById('input-notes').value = text;
+                }
+
+                // Seasons and episodes
+                if (epData._embedded && epData._embedded.episodes) {
+                    const episodes = epData._embedded.episodes;
+                    const seasonsMap = {};
+                    episodes.forEach(ep => {
+                        // ignore special seasons which are often 0
+                        if (ep.season > 0) {
+                            if (!seasonsMap[ep.season]) seasonsMap[ep.season] = 0;
+                            seasonsMap[ep.season]++;
+                        }
+                    });
+                    
+                    const seasonNumbers = Object.keys(seasonsMap).map(Number).sort((a,b)=>a-b);
+                    if (seasonNumbers.length > 0) {
+                        const numSeasons = seasonNumbers.length;
+                        document.getElementById('input-num-seasons').value = numSeasons;
+                        this.updateSeasonInputs();
+                        
+                        // Set number of episodes per season after DOM updates
+                        setTimeout(() => {
+                            for (let i = 0; i < numSeasons; i++) {
+                                const epCountInput = document.querySelector(`.season-ep-count[data-season="${i+1}"]`);
+                                if (epCountInput) {
+                                    epCountInput.value = seasonsMap[seasonNumbers[i]];
+                                }
+                            }
+                        }, 50);
+                    }
+                }
+                
+                UI.showToast('✅ Données récupérées !');
+            } else {
+                // iTunes API
+                const res = await fetch(`https://itunes.apple.com/search?entity=movie&term=${encodeURIComponent(title)}&limit=1`);
+                const data = await res.json();
+                
+                if (!data || data.resultCount === 0) {
+                    UI.showToast('❌ Film introuvable');
+                    return;
+                }
+                const best = data.results[0];
+                
+                document.getElementById('input-title').value = best.trackName;
+                if (best.artworkUrl100) {
+                    document.getElementById('input-poster').value = best.artworkUrl100.replace('100x100bb', '600x600bb');
+                }
+                if (best.releaseDate) {
+                    document.getElementById('input-year').value = best.releaseDate.substring(0, 4);
+                }
+                if (best.longDescription) {
+                    document.getElementById('input-notes').value = best.longDescription;
+                }
+                UI.showToast('✅ Données récupérées !');
+            }
+        } catch (e) {
+            UI.showToast('❌ Erreur de réseau');
+            console.error(e);
+        }
+    },
+
     // ===== FORM SUBMIT =====
     async submitForm(editId) {
         const type = document.getElementById('input-type').value;

@@ -400,7 +400,10 @@ const UI = {
 
             <div class="form-group">
                 <label class="form-label">Titre *</label>
-                <input type="text" class="form-input" id="input-title" placeholder="Ex: Breaking Bad" value="${title}">
+                <div style="display:flex;gap:8px">
+                    <input type="text" class="form-input" id="input-title" placeholder="Ex: Breaking Bad" value="${title}" style="flex:1">
+                    <button type="button" onclick="App.autoFill()" style="padding:0 12px;background:var(--bg-glass-strong);border:1px solid var(--border);border-radius:var(--radius-md);color:var(--accent-light);transition:transform 0.1s" onmousedown="this.style.transform='scale(0.95)'" onmouseup="this.style.transform='scale(1)'" onmouseleave="this.style.transform='scale(1)'" title="Rechercher en ligne">🔍 Auto</button>
+                </div>
             </div>
 
             <div class="form-group">
