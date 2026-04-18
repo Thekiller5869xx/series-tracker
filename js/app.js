@@ -223,7 +223,7 @@ const App = {
         const title = titleInput.value.trim();
         
         if (!title) {
-            UI.showToast('⚠️ Entrez un titre d\\'abord');
+            UI.showToast("⚠️ Entrez un titre d'abord");
             return;
         }
 
