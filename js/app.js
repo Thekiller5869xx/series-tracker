@@ -257,12 +257,20 @@ const App = {
                 let mainNotes = best.summary ? best.summary.replace(/<[^>]*>?/gm, '') : '';
                 
                 try {
-                    const itunesRes = await fetch(`https://itunes.apple.com/search?entity=tvShow&term=${encodeURIComponent(title)}&limit=1&lang=fr_fr&country=fr`);
-                    const itunesData = await itunesRes.json();
+                    // Try tvShow first, then tvSeason if failed
+                    let itunesRes = await fetch(`https://itunes.apple.com/search?entity=tvShow&term=${encodeURIComponent(title)}&limit=1&lang=fr_fr&country=fr`);
+                    let itunesData = await itunesRes.json();
+                    
+                    if (itunesData.resultCount === 0) {
+                        itunesRes = await fetch(`https://itunes.apple.com/search?entity=tvSeason&term=${encodeURIComponent(title)}&limit=1&lang=fr_fr&country=fr`);
+                        itunesData = await itunesRes.json();
+                    }
+
                     if (itunesData.resultCount > 0) {
                         const fr = itunesData.results[0];
-                        mainTitle = fr.collectionName || fr.artistName || best.name;
+                        mainTitle = fr.collectionName || fr.artistName || fr.trackName || best.name;
                         if (fr.longDescription) mainNotes = fr.longDescription;
+                        else if (fr.description) mainNotes = fr.description;
                     }
                 } catch (e) {}
 
@@ -304,6 +312,27 @@ const App = {
                         summary: e.summary ? e.summary.replace(/<[^>]*>?/gm, '') : '',
                         image: e.image ? e.image.medium : null
                     }));
+
+                    // TRY TO FETCH FRENCH TITLES/SUMMARIES FROM ITUNES
+                    try {
+                        const itunesEpRes = await fetch(`https://itunes.apple.com/search?entity=tvEpisode&term=${encodeURIComponent(title)}&limit=200&lang=fr_fr&country=fr`);
+                        const itunesEpData = await itunesEpRes.json();
+                        
+                        if (itunesEpData.resultCount > 0) {
+                            itunesEpData.results.forEach(itEp => {
+                                const s = itEp.collectionNumber || 1; // Season
+                                const e = itEp.trackNumber; // Episode
+                                
+                                const target = this.tempEpisodes.find(te => te.season === s && te.number === e);
+                                if (target) {
+                                    if (itEp.trackName) target.title = itEp.trackName;
+                                    if (itEp.longDescription) target.summary = itEp.longDescription;
+                                }
+                            });
+                        }
+                    } catch (e) {
+                        console.error("iTunes episodes fetch failed", e);
+                    }
                 }
 
                 // Seasons and episodes
