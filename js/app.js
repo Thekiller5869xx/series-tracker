@@ -6,6 +6,7 @@ const App = {
     currentDetailId: null,
     items: [],
     openSeasons: new Set(),
+    tempCast: [],
 
     // ===== INIT =====
     async init() {
@@ -172,6 +173,7 @@ const App = {
     showAddModal() {
         const modal = document.getElementById('modal-overlay');
         const content = document.getElementById('modal-content');
+        this.tempCast = [];
         content.innerHTML = UI.renderAddForm();
         modal.classList.remove('hidden');
     },
@@ -181,6 +183,7 @@ const App = {
         if (!item) return;
         const modal = document.getElementById('modal-overlay');
         const content = document.getElementById('modal-content');
+        this.tempCast = item.cast || [];
         content.innerHTML = UI.renderAddForm(item);
         modal.classList.remove('hidden');
     },
@@ -264,6 +267,16 @@ const App = {
                     document.getElementById('input-notes').value = text;
                 }
 
+                // CAST
+                this.tempCast = [];
+                if (epData._embedded && epData._embedded.cast) {
+                    this.tempCast = epData._embedded.cast.map(c => ({
+                        name: c.person.name,
+                        character: c.character.name,
+                        image: c.person.image ? c.person.image.medium : null
+                    }));
+                }
+
                 // Seasons and episodes
                 if (epData._embedded && epData._embedded.episodes) {
                     const episodes = epData._embedded.episodes;
@@ -296,7 +309,7 @@ const App = {
                 
                 UI.showToast('✅ Données récupérées !');
             } else {
-                // iTunes API
+                // iTunes API (Movies)
                 const res = await fetch(`https://itunes.apple.com/search?entity=movie&term=${encodeURIComponent(title)}&limit=1`);
                 const data = await res.json();
                 
@@ -316,6 +329,11 @@ const App = {
                 if (best.longDescription) {
                     document.getElementById('input-notes').value = best.longDescription;
                 }
+
+                // Since iTunes doesn't give cast easily, we'll try to find it on TVMaze (which sometimes has movie info or actors)
+                // but for now, let's just clear cast for movies from iTunes or add a note.
+                this.tempCast = [];
+                
                 UI.showToast('✅ Données récupérées !');
             }
         } catch (e) {
@@ -348,6 +366,7 @@ const App = {
             item.genre = genre;
             item.year = year;
             item.notes = notes;
+            item.cast = this.tempCast;
 
             // If series, update seasons structure
             if (type === 'series') {
@@ -398,9 +417,9 @@ const App = {
                 for (let i = 0; i < numSeasons; i++) {
                     seasons.push(epCounts[i] ? parseInt(epCounts[i].value) || 10 : 10);
                 }
-                item = Database.createSeries({ title, posterUrl, genre, year, seasons, notes });
+                item = Database.createSeries({ title, posterUrl, genre, year, seasons, notes, cast: this.tempCast });
             } else {
-                item = Database.createMovie({ title, posterUrl, genre, year, notes });
+                item = Database.createMovie({ title, posterUrl, genre, year, notes, cast: this.tempCast });
             }
             await db.add(item);
             UI.showToast('✅ Ajouté avec succès');
@@ -446,7 +465,42 @@ const App = {
         const ep = season.episodes.find(e => e.number === epNum);
         if (!ep) return;
 
-        ep.watched = !ep.watched;
+        const wasWatched = ep.watched;
+        ep.watched = !wasWatched;
+
+        // SKIP EPISODE LOGIC
+        if (!wasWatched) { // if marking as watched
+            const skipped = [];
+            for (let i = 0; i < epNum - 1; i++) {
+                if (!season.episodes[i].watched) {
+                    skipped.push(season.episodes[i]);
+                }
+            }
+
+            if (skipped.length > 0) {
+                const modal = document.getElementById('modal-overlay');
+                const content = document.getElementById('modal-content');
+                const list = skipped.map(e => e.number).join(', ');
+                
+                content.innerHTML = `
+                    <div class="modal-handle"></div>
+                    <div class="confirm-dialog">
+                        <h3>⏯️ Épisodes précédents</h3>
+                        <p>Voulez-vous aussi marquer les épisodes précédents (${list}) comme vus ?</p>
+                        <div class="confirm-actions">
+                            <button class="btn-cancel" onclick="App.navigate('detail', '${itemId}'); App.closeModal();">Non</button>
+                            <button class="btn-confirm" onclick="App.markSkippedWatched('${itemId}', ${seasonNum}, ${epNum})">Oui, tout marquer</button>
+                        </div>
+                    </div>
+                `;
+                modal.classList.remove('hidden');
+                
+                // We still save the current episode first
+                await db.update(item);
+                this.items = await db.getAll();
+                return; // Wait for user decision
+            }
+        }
 
         // Auto update status
         const prog = Database.getSeriesProgress(item);
@@ -466,6 +520,23 @@ const App = {
         if (!this.openSeasons.has(seasonNum)) {
             this.toggleSeason(seasonNum);
         }
+    },
+
+    async markSkippedWatched(itemId, seasonNum, epNum) {
+        const item = this.items.find(i => i.id === itemId);
+        if (!item) return;
+        const season = item.seasons.find(s => s.number === seasonNum);
+        if (!season) return;
+
+        for (let i = 0; i < epNum - 1; i++) {
+            season.episodes[i].watched = true;
+        }
+
+        await db.update(item);
+        this.items = await db.getAll();
+        this.closeModal();
+        this.navigate('detail', itemId);
+        this.toggleSeason(seasonNum);
     },
 
     // ===== MARK ALL SEASON =====

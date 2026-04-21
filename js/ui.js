@@ -287,6 +287,27 @@ const UI = {
             </div>`;
         }
 
+        // Cast
+        if (item.cast && item.cast.length > 0) {
+            html += `
+            <div class="section-header" style="margin-top: 24px">
+                <h3>👥 Casting</h3>
+            </div>
+            <div class="cast-scroll">
+                ${item.cast.map(c => `
+                    <div class="cast-card">
+                        <div class="cast-photo" style="${c.image ? `background-image: url('${c.image}')` : ''}">
+                            ${!c.image ? '👤' : ''}
+                        </div>
+                        <div class="cast-info">
+                            <div class="cast-name">${c.name}</div>
+                            <div class="cast-character">${c.character}</div>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>`;
+        }
+
         // Series progress + episodes
         if (isSeries) {
             const p = Database.getSeriesProgress(item);

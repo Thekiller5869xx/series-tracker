@@ -98,7 +98,7 @@ class Database {
     }
 
     // ===== Helper: create a new series object =====
-    static createSeries({ title, posterUrl, genre, year, seasons, notes }) {
+    static createSeries({ title, posterUrl, genre, year, seasons, notes, cast }) {
         const seasonsData = [];
         for (let s = 0; s < seasons.length; s++) {
             const episodes = [];
@@ -125,12 +125,13 @@ class Database {
             rating: 0,
             status: 'plantowatch', // watching, completed, plantowatch
             notes: notes || '',
-            seasons: seasonsData
+            seasons: seasonsData,
+            cast: cast || []
         };
     }
 
     // ===== Helper: create a new movie object =====
-    static createMovie({ title, posterUrl, genre, year, notes }) {
+    static createMovie({ title, posterUrl, genre, year, notes, cast }) {
         return {
             type: 'movie',
             title: title.trim(),
@@ -140,7 +141,8 @@ class Database {
             rating: 0,
             status: 'plantowatch', // watched, plantowatch
             watched: false,
-            notes: notes || ''
+            notes: notes || '',
+            cast: cast || []
         };
     }
 
