@@ -7,6 +7,7 @@ const App = {
     items: [],
     openSeasons: new Set(),
     tempCast: [],
+    tempEpisodes: [],
 
     // ===== INIT =====
     async init() {
@@ -86,7 +87,11 @@ const App = {
         backBtn.classList.add('hidden');
         searchBtn.classList.remove('hidden');
         fab.classList.remove('hidden');
-        this.openSeasons.clear();
+        
+        // Only clear open seasons if we are changing pages OR selecting a NEW detail item
+        if (page !== 'detail' || this.currentDetailId !== id) {
+            this.openSeasons.clear();
+        }
 
         switch (page) {
             case 'dashboard':
@@ -107,8 +112,8 @@ const App = {
                 fab.classList.add('hidden');
                 searchBtn.classList.add('hidden');
                 main.innerHTML = UI.renderDetail(item);
-                // Auto-open first season
-                if (item && item.type === 'series' && item.seasons.length > 0) {
+                // Auto-open first season only if none are open
+                if (item && item.type === 'series' && item.seasons.length > 0 && this.openSeasons.size === 0) {
                     this.toggleSeason(1);
                 }
                 break;
@@ -277,6 +282,18 @@ const App = {
                     }));
                 }
 
+                // EPISODES DATA
+                this.tempEpisodes = [];
+                if (epData._embedded && epData._embedded.episodes) {
+                    this.tempEpisodes = epData._embedded.episodes.map(e => ({
+                        season: e.season,
+                        number: e.number,
+                        title: e.name,
+                        summary: e.summary ? e.summary.replace(/<[^>]*>?/gm, '') : '',
+                        image: e.image ? e.image.medium : null
+                    }));
+                }
+
                 // Seasons and episodes
                 if (epData._embedded && epData._embedded.episodes) {
                     const episodes = epData._embedded.episodes;
@@ -367,8 +384,8 @@ const App = {
             item.year = year;
             item.notes = notes;
             item.cast = this.tempCast;
-
-            // If series, update seasons structure
+            
+            // If series, update seasons structure and titles/summaries
             if (type === 'series') {
                 const numSeasons = parseInt(document.getElementById('input-num-seasons').value) || 1;
                 const epCounts = document.querySelectorAll('.season-ep-count');
@@ -400,8 +417,18 @@ const App = {
                         });
                     }
                     season.episodes.length = epCount;
-                    // Renumber
-                    season.episodes.forEach((ep, i) => ep.number = i + 1);
+                    // Renumber and attach auto-fill data
+                    season.episodes.forEach((ep, i) => {
+                        ep.number = i + 1;
+                        if (this.tempEpisodes.length > 0) {
+                            const info = this.tempEpisodes.find(te => te.season === season.number && te.number === ep.number);
+                            if (info) {
+                                ep.title = info.title;
+                                ep.summary = info.summary;
+                                ep.image = info.image;
+                            }
+                        }
+                    });
                 }
             }
 
@@ -418,6 +445,20 @@ const App = {
                     seasons.push(epCounts[i] ? parseInt(epCounts[i].value) || 10 : 10);
                 }
                 item = Database.createSeries({ title, posterUrl, genre, year, seasons, notes, cast: this.tempCast });
+                
+                // Attach episode info
+                if (this.tempEpisodes.length > 0) {
+                    item.seasons.forEach(s => {
+                        s.episodes.forEach(ep => {
+                            const info = this.tempEpisodes.find(te => te.season === s.number && te.number === ep.number);
+                            if (info) {
+                                ep.title = info.title;
+                                ep.summary = info.summary;
+                                ep.image = info.image;
+                            }
+                        });
+                    });
+                }
             } else {
                 item = Database.createMovie({ title, posterUrl, genre, year, notes, cast: this.tempCast });
             }
@@ -513,9 +554,16 @@ const App = {
 
         // Re-render detail
         this.navigate('detail', itemId);
-        // Re-open seasons
+        // Re-open seasons - fix for toggle logic
         const toOpen = [...this.openSeasons];
-        toOpen.forEach(s => this.toggleSeason(s));
+        toOpen.forEach(s => {
+            const el = document.getElementById(`episodes-s${s}`);
+            const toggle = document.getElementById(`toggle-s${s}`);
+            if (el && toggle) {
+                el.classList.add('open');
+                toggle.classList.add('open');
+            }
+        });
         // Always keep current season open
         if (!this.openSeasons.has(seasonNum)) {
             this.toggleSeason(seasonNum);
@@ -539,6 +587,35 @@ const App = {
         this.toggleSeason(seasonNum);
     },
 
+    // ===== EPISODE INFO =====
+    showEpisodeInfo(itemId, seasonNum, epNum) {
+        const item = this.items.find(i => i.id === itemId);
+        if (!item) return;
+        const season = item.seasons.find(s => s.number === seasonNum);
+        if (!season) return;
+        const ep = season.episodes.find(e => e.number === epNum);
+        if (!ep) return;
+
+        const modal = document.getElementById('modal-overlay');
+        const content = document.getElementById('modal-content');
+
+        content.innerHTML = `
+            <div class="modal-handle"></div>
+            <div class="ep-info-modal">
+                <div class="ep-info-header" style="${ep.image ? `background-image: url('${ep.image}')` : ''}">
+                    ${!ep.image ? '📺' : ''}
+                </div>
+                <div class="ep-info-body">
+                    <span class="ep-info-tag">Saison ${seasonNum} · Épisode ${epNum}</span>
+                    <h3 class="ep-info-title">${ep.title || 'Sans titre'}</h3>
+                    <p class="ep-info-summary">${ep.summary || 'Aucun résumé disponible pour le moment.'}</p>
+                    <button class="form-submit" onclick="App.closeModal()" style="margin-top: 20px">Fermer</button>
+                </div>
+            </div>
+        `;
+        modal.classList.remove('hidden');
+    },
+
     // ===== MARK ALL SEASON =====
     async markAllSeason(itemId, seasonNum) {
         const item = this.items.find(i => i.id === itemId);
@@ -559,7 +636,21 @@ const App = {
         await db.update(item);
         this.items = await db.getAll();
         this.navigate('detail', itemId);
-        this.toggleSeason(seasonNum);
+        
+        // Re-open
+        const toOpen = [...this.openSeasons];
+        toOpen.forEach(s => {
+            const el = document.getElementById(`episodes-s${s}`);
+            const toggle = document.getElementById(`toggle-s${s}`);
+            if (el && toggle) {
+                el.classList.add('open');
+                toggle.classList.add('open');
+            }
+        });
+        
+        if (!this.openSeasons.has(seasonNum)) {
+            this.toggleSeason(seasonNum);
+        }
     },
 
     // ===== RATE EPISODE =====
@@ -578,9 +669,16 @@ const App = {
         this.items = await db.getAll();
 
         // Just re-render detail
-        const openS = [...this.openSeasons];
+        const toOpen = [...this.openSeasons];
         this.navigate('detail', itemId);
-        openS.forEach(s => this.toggleSeason(s));
+        toOpen.forEach(s => {
+            const el = document.getElementById(`episodes-s${s}`);
+            const toggle = document.getElementById(`toggle-s${s}`);
+            if (el && toggle) {
+                el.classList.add('open');
+                toggle.classList.add('open');
+            }
+        });
     },
 
     // ===== STAR CLICK (main rating) =====
@@ -592,9 +690,16 @@ const App = {
         await db.update(item);
         this.items = await db.getAll();
 
-        const openS = [...this.openSeasons];
+        const toOpen = [...this.openSeasons];
         this.navigate('detail', itemId);
-        openS.forEach(s => this.toggleSeason(s));
+        toOpen.forEach(s => {
+            const el = document.getElementById(`episodes-s${s}`);
+            const toggle = document.getElementById(`toggle-s${s}`);
+            if (el && toggle) {
+                el.classList.add('open');
+                toggle.classList.add('open');
+            }
+        });
     },
 
     // ===== TOGGLE MOVIE WATCHED =====

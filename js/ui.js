@@ -14,7 +14,8 @@ const UI = {
         popcorn: '🍿',
         trophy: '🏆',
         chart: '📊',
-        clock: '⏳'
+        clock: '⏳',
+        info: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>'
     },
 
     // ===== STARS COMPONENT =====
@@ -354,6 +355,9 @@ const UI = {
                                 <div class="ep-num">Épisode ${ep.number}</div>
                                 ${ep.title ? `<div class="ep-title">${ep.title}</div>` : ''}
                             </div>
+                            <button class="ep-info-btn" onclick="event.stopPropagation(); App.showEpisodeInfo('${item.id}', ${season.number}, ${ep.number})" title="Plus d'infos">
+                                ${this.icons.info}
+                            </button>
                             <div class="episode-rating">
                                 ${this._renderMiniStars(ep.rating, item.id, season.number, ep.number)}
                             </div>
