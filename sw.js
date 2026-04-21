@@ -1,4 +1,4 @@
-const CACHE_NAME = 'seriestracker-v3';
+const CACHE_NAME = 'seriestracker-v4';
 const ASSETS = [
     '/',
     '/index.html',

@@ -244,7 +244,7 @@ const App = {
                 const best = data[0].show;
                 
                 // Fetch full info for episodes/seasons
-                const epRes = await fetch(`https://api.tvmaze.com/shows/${best.id}?embed=episodes`);
+                const epRes = await fetch(`https://api.tvmaze.com/shows/${best.id}?embed[]=episodes&embed[]=cast`);
                 const epData = await epRes.json();
                 
                 document.getElementById('input-title').value = best.name;
