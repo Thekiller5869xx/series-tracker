@@ -252,7 +252,22 @@ const App = {
                 const epRes = await fetch(`https://api.tvmaze.com/shows/${best.id}?embed[]=episodes&embed[]=cast`);
                 const epData = await epRes.json();
                 
-                document.getElementById('input-title').value = best.name;
+                // Try to get French info from iTunes as a supplement
+                let mainTitle = best.name;
+                let mainNotes = best.summary ? best.summary.replace(/<[^>]*>?/gm, '') : '';
+                
+                try {
+                    const itunesRes = await fetch(`https://itunes.apple.com/search?entity=tvShow&term=${encodeURIComponent(title)}&limit=1&lang=fr_fr&country=fr`);
+                    const itunesData = await itunesRes.json();
+                    if (itunesData.resultCount > 0) {
+                        const fr = itunesData.results[0];
+                        mainTitle = fr.collectionName || fr.artistName || best.name;
+                        if (fr.longDescription) mainNotes = fr.longDescription;
+                    }
+                } catch (e) {}
+
+                document.getElementById('input-title').value = mainTitle;
+                document.getElementById('input-notes').value = mainNotes;
                 if (best.image && best.image.original) {
                     document.getElementById('input-poster').value = best.image.original;
                 }
@@ -267,10 +282,7 @@ const App = {
                 if (best.premiered) {
                     document.getElementById('input-year').value = best.premiered.substring(0, 4);
                 }
-                if (best.summary) {
-                    let text = best.summary.replace(/<[^>]*>?/gm, ''); // remove html tags
-                    document.getElementById('input-notes').value = text;
-                }
+                // (Notes already filled by iTunes logic above)
 
                 // CAST
                 this.tempCast = [];
@@ -327,7 +339,7 @@ const App = {
                 UI.showToast('✅ Données récupérées !');
             } else {
                 // iTunes API (Movies)
-                const res = await fetch(`https://itunes.apple.com/search?entity=movie&term=${encodeURIComponent(title)}&limit=1`);
+                const res = await fetch(`https://itunes.apple.com/search?entity=movie&term=${encodeURIComponent(title)}&limit=1&lang=fr_fr&country=fr`);
                 const data = await res.json();
                 
                 if (!data || data.resultCount === 0) {
